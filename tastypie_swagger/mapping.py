@@ -2,7 +2,12 @@ import datetime
 import logging
 
 from django.db.models.sql.constants import QUERY_TERMS
-from django.utils.encoding import force_unicode
+
+try:
+    from django.utils.encoding import force_text
+except ImportError:
+    from django.utils.encoding import force_text as force_text
+
 
 from tastypie import fields
 
@@ -135,7 +140,7 @@ class ResourceSwaggerMapping(object):
                     name=name,
                     dataType=field['type'],
                     required=not field['blank'],
-                    description=force_unicode(field['help_text']),
+                    description=force_text(field['help_text']),
                 ))
         return parameters
 
@@ -181,7 +186,7 @@ class ResourceSwaggerMapping(object):
                     name=name,
                     dataType=type,
                     required=False,
-                    description=force_unicode(desc),
+                    description=force_text(desc),
                 ))
         if 'filtering' in self.schema and method.upper() == 'GET':
             for name, field in self.schema['filtering'].items():
@@ -238,7 +243,7 @@ class ResourceSwaggerMapping(object):
 
                         for query in field:
                             if query == 'exact':
-                                description = force_unicode(schema_field['help_text'])
+                                description = force_text(schema_field['help_text'])
 
                                 # Use a better description for related models with exact filter
                                 parameters.append(self.build_parameter(
@@ -254,7 +259,7 @@ class ResourceSwaggerMapping(object):
                                     name="%s%s__%s" % (prefix, name, query),
                                     dataType=dataType,
                                     required = False,
-                                    description=force_unicode(schema_field['help_text']),
+                                    description=force_text(schema_field['help_text']),
                                 ))
 
         return parameters
@@ -281,11 +286,11 @@ class ResourceSwaggerMapping(object):
                               description='Primary key of resource'))
         for name, field in fields.items():
             parameters.append(self.build_parameter(
-                paramType="query",
+                paramType=field.get("param_type", "query"),
                 name=name,
                 dataType=field.get("type", "string"),
                 required=field.get("required", True),
-                description=force_unicode(field.get("description", "")),
+                description=force_text(field.get("description", "")),
             ))
 
         # For non-standard API functionality, allow the User to declaritively
@@ -347,6 +352,7 @@ class ResourceSwaggerMapping(object):
                 resource_type=extra_action.get("resource_type", "view")),
             'responseClass': 'Object', #TODO this should be extended to allow the creation of a custom object.
             'nickname': extra_action['name'],
+            'notes': extra_action.get('notes', ''),
         }
 
     def build_detail_api(self):
@@ -427,8 +433,10 @@ class ResourceSwaggerMapping(object):
 
     def build_properties_from_fields(self, method='get'):
         properties = {}
-
+        excludes = getattr(self.resource._meta, 'excludes', [])
         for name, field in self.schema['fields'].items():
+            if name in excludes:
+                continue
             # Exclude fields from custom put / post / patch object definition
             if method in ['post','put','patch']:
                 if name in self.WRITE_ACTION_IGNORED_FIELDS:
@@ -446,7 +454,7 @@ class ResourceSwaggerMapping(object):
                     field.get('type'),
                     # note: 'help_text' is a Django proxy which must be wrapped
                     # in unicode *specifically* to get the actual help text.
-                    force_unicode(field.get('help_text', '')),
+                    force_text(field.get('help_text', '')),
                 )
             )
         return properties
